@@ -229,121 +229,152 @@ VIEWBOX_H = 440.0
 
 
 def _engine_to_ie_paths(R: float) -> list[list[tuple[float, float]]]:
-    """Waypoint sequences for the engine→IE shooting-dot animation.
+    """Waypoint sequences for the engine→IE shooting-line animation.
 
-    Each entry is a list of (x, y) vertices in user space, traversed in
-    order along existing cube-grid edges or internal Y-arms. The dot
-    travels from the engine's nearest connection point through the empty
-    tile(s) between it and IE, ending at one of IE's vertices.
-
-    Multiple paths per engine exist when there are several equidistant
-    starting vertices (LLaMA and TGI each have 2 — top and bottom)."""
+    11 paths total — each engine has 2 source dots, except Transformers
+    which has 3 (one from each of its 3 top vertices). Every path
+    traverses existing cube-grid edges / internal Y-arms and terminates
+    at a vertex of the IE tile (a connection point of the central
+    chevron hex)."""
     from math import sqrt
     s3 = sqrt(3)
     return [
-        # SGL (above-left): bottom-right of its right tile → empty tile center → IE top.
+        # ---- SGL (upper-left): 2 sources from its bottom edge ----
+        # A: bottom-right vertex → gap-tile center → IE top
         [(-R*s3/2, -5*R/2), (-R*s3/2, -3*R/2), (0, -R)],
-        # vLLM (above-right): mirror of SGL.
-        [(R*s3/2, -5*R/2), (R*s3/2, -3*R/2), (0, -R)],
-        # LLaMA top arm: top-right of right tile → over the gap's top apex → IE top-left.
-        [(-3*R*s3/2, -R/2), (-R*s3, -R), (-R*s3/2, -R/2)],
-        # LLaMA bottom arm: bottom-right → through gap-tile center → IE bottom-left.
-        [(-3*R*s3/2, R/2), (-R*s3, 0), (-R*s3/2, R/2)],
-        # TGI top arm — mirror of LLaMA top.
-        [(3*R*s3/2, -R/2), (R*s3, -R), (R*s3/2, -R/2)],
-        # TGI bottom arm — mirror of LLaMA bottom.
-        [(3*R*s3/2, R/2), (R*s3, 0), (R*s3/2, R/2)],
-        # Transformers (below): top vertex of middle tile → IE bottom (single edge).
-        [(0, 2*R), (0, R)],
+        # B: bottom vertex → south vertical edge → IE top-left
+        [(-R*s3,   -2*R),    (-R*s3, -R),       (-R*s3/2, -R/2)],
+        # ---- vLLM (upper-right): mirror of SGL ----
+        [(R*s3/2,  -5*R/2),  (R*s3/2, -3*R/2),  (0, -R)],
+        [(R*s3,    -2*R),    (R*s3, -R),        (R*s3/2, -R/2)],
+        # ---- LLaMA (left): 2 sources from its right edge ----
+        # Top arm: top-right → over apex → IE top-left
+        [(-3*R*s3/2, -R/2),  (-R*s3, -R),       (-R*s3/2, -R/2)],
+        # Bot arm: bottom-right → through gap-tile center → IE bottom-left
+        [(-3*R*s3/2, R/2),   (-R*s3, 0),        (-R*s3/2, R/2)],
+        # ---- TGI (right): mirror of LLaMA ----
+        [(3*R*s3/2,  -R/2),  (R*s3, -R),        (R*s3/2, -R/2)],
+        [(3*R*s3/2,  R/2),   (R*s3, 0),         (R*s3/2, R/2)],
+        # ---- Transformers (below): 3 sources from its top three vertices ----
+        # Left: top of left tile → above-tile center → IE bottom-left
+        [(-R*s3, 2*R),       (-R*s3/2, 3*R/2),  (-R*s3/2, R/2)],
+        # Middle: top of middle tile → IE bottom (single straight edge)
+        [(0, 2*R),           (0, R)],
+        # Right: mirror of left
+        [(R*s3, 2*R),        (R*s3/2, 3*R/2),   (R*s3/2, R/2)],
     ]
 
 
-def _build_path_animation(
-    waypoints: list[tuple[float, float]],
-    cycle_dur: float = 2.5,
-    speed: float = 72.0,
+def _build_engine_animations(
+    R: float,
+    cycle_dur: float = 6.0,
+    speed: float = 40.0,
     dot_radius: float = 2.0,
     color: str = LOGO_ANIM_COLOR,
-    trail_count: int = 3,
-    flash_half_fraction: float = 0.025,
-) -> list[str]:
-    """Build SVG <circle> elements that animate a shooting dot + trail along
-    `waypoints`, plus brief pink-flash overlays at every waypoint vertex.
+    trail_length: float = 26.0,
+    line_thickness: float = 1.6,
+    flash_half: float = 0.022,
+) -> tuple[str, str]:
+    """Build the engine→IE traveling-line animations.
 
-    The leader dot moves at `speed` user-units/sec over the path, holds at
-    the end for the remaining cycle, then loops. Trails are delayed copies
-    with reduced opacity. Vertex flashes fire when the leader reaches them."""
+    Returns (defs_svg, body_svg). `defs_svg` defines a horizontal trail
+    sprite (a tapered line via linear gradient) plus the gradient itself.
+    `body_svg` instantiates the sprite per path with <animateMotion>, plus
+    a brief pink pulse overlay on every waypoint connection point.
+
+    11 traveling lines total, evenly staggered across the cycle so that
+    at most ~5 are simultaneously visible. Speed is intentionally low
+    (40 user units/sec) for a subtle feel."""
     from math import sqrt
-    n = len(waypoints)
-    seg_lengths = [
-        sqrt((waypoints[i+1][0] - waypoints[i][0])**2 + (waypoints[i+1][1] - waypoints[i][1])**2)
-        for i in range(n - 1)
-    ]
-    total_length = sum(seg_lengths)
-    travel_time = total_length / speed
-    travel_fraction = min(travel_time / cycle_dur, 0.9)  # leave a brief pause
 
-    # Time fraction (within cycle) at which the dot reaches each waypoint.
-    waypoint_times = [0.0]
-    cum = 0.0
-    for L in seg_lengths:
-        cum += L
-        waypoint_times.append(cum / total_length * travel_fraction)
+    paths = _engine_to_ie_paths(R)
+    n_paths = len(paths)
+    stagger = cycle_dur / n_paths
 
-    cx_vals = [w[0] for w in waypoints] + [waypoints[-1][0]]
-    cy_vals = [w[1] for w in waypoints] + [waypoints[-1][1]]
-    motion_kt = waypoint_times + [1.0]
+    # --- defs: gradient + trail sprite ---
+    defs = "".join([
+        f'<linearGradient id="engine-line-grad" x1="0" y1="0" x2="1" y2="0">',
+        f'<stop offset="0" stop-color="{color}" stop-opacity="0"/>',
+        f'<stop offset="1" stop-color="{color}" stop-opacity="1"/>',
+        f'</linearGradient>',
+        # Trail extends from x=-trail_length (transparent tail) to x=0 (solid head).
+        # Centered vertically. rx rounds the cap; the gradient hides it on the tail.
+        f'<g id="engine-trail">'
+        f'<rect x="{-trail_length:.2f}" y="{-line_thickness/2:.2f}" '
+        f'width="{trail_length:.2f}" height="{line_thickness:.2f}" '
+        f'fill="url(#engine-line-grad)" rx="{line_thickness/2:.2f}"/>'
+        f'</g>',
+    ])
 
-    fade = 0.04
-    op_kt = [0.0, fade, max(fade, travel_fraction - fade), travel_fraction, 1.0]
-    op_vals = [0, 1, 1, 0, 0]
+    # --- body: one <use> per path + per-waypoint flash overlays ---
+    body_parts: list[str] = []
+    for idx, waypoints in enumerate(paths):
+        begin = idx * stagger
+        seg_lengths = [
+            sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
+                 (waypoints[i+1][1] - waypoints[i][1])**2)
+            for i in range(len(waypoints) - 1)
+        ]
+        total_length = sum(seg_lengths)
+        travel_time = total_length / speed
+        travel_fraction = travel_time / cycle_dur
 
-    kt_str = "; ".join(f"{t:.4f}" for t in motion_kt)
-    cx_str = "; ".join(f"{v:.3f}" for v in cx_vals)
-    cy_str = "; ".join(f"{v:.3f}" for v in cy_vals)
-    op_kt_str = "; ".join(f"{t:.4f}" for t in op_kt)
-    op_val_str = "; ".join(str(v) for v in op_vals)
+        path_d = "M " + " L ".join(f"{x:.3f},{y:.3f}" for x, y in waypoints)
 
-    out: list[str] = []
-
-    def shooting_dot(begin_delay: float, max_op: float) -> str:
-        scaled = [v * max_op for v in op_vals]
-        scaled_str = "; ".join(f"{v:.3f}" for v in scaled)
-        b = f' begin="{begin_delay}s"' if begin_delay > 0 else ""
-        return (
-            f'<circle r="{dot_radius}" fill="{color}" opacity="0">'
-            f'<animate attributeName="cx" values="{cx_str}" keyTimes="{kt_str}" dur="{cycle_dur}s" repeatCount="indefinite"{b}/>'
-            f'<animate attributeName="cy" values="{cy_str}" keyTimes="{kt_str}" dur="{cycle_dur}s" repeatCount="indefinite"{b}/>'
-            f'<animate attributeName="opacity" values="{scaled_str}" keyTimes="{op_kt_str}" dur="{cycle_dur}s" repeatCount="indefinite"{b}/>'
-            f'</circle>'
+        # animateMotion: travel from start (keyPoint 0) to end (keyPoint 1)
+        # during the first travel_fraction of the cycle; hold at the end
+        # for the remainder.
+        anim_motion = (
+            f'<animateMotion dur="{cycle_dur}s" begin="{begin:.3f}s" '
+            f'repeatCount="indefinite" rotate="auto" path="{path_d}" '
+            f'keyTimes="0; {travel_fraction:.4f}; 1" keyPoints="0; 1; 1"/>'
         )
 
-    # Leader + trail (reduced opacity, slight delay each)
-    out.append(shooting_dot(0.0, 1.0))
-    trail_specs = [(0.06, 0.55), (0.12, 0.30), (0.18, 0.15)][:trail_count]
-    for delay, max_op in trail_specs:
-        out.append(shooting_dot(delay, max_op))
-
-    # Brief pink pulse on every waypoint dot as the leader passes
-    for (vx, vy), t in zip(waypoints, waypoint_times):
-        if t == 0.0:
-            kt = [0.0, flash_half_fraction, 1.0]
-            vals = [1, 0, 0]
-        elif t + flash_half_fraction >= 1.0:
-            kt = [0.0, t - flash_half_fraction, 1.0]
-            vals = [0, 0, 1]
-        else:
-            kt = [0.0, t - flash_half_fraction, t, t + flash_half_fraction, 1.0]
-            vals = [0, 0, 1, 0, 0]
-        kt_s = "; ".join(f"{x:.4f}" for x in kt)
-        vs = "; ".join(str(v) for v in vals)
-        out.append(
-            f'<circle cx="{vx:.3f}" cy="{vy:.3f}" r="{dot_radius}" fill="{color}" opacity="0">'
-            f'<animate attributeName="opacity" values="{vs}" keyTimes="{kt_s}" dur="{cycle_dur}s" repeatCount="indefinite"/>'
-            f'</circle>'
+        # Opacity envelope: invisible before travel, fade in, hold, fade out
+        fade = 0.03
+        op_kt = [0.0, fade, max(fade, travel_fraction - fade), travel_fraction, 1.0]
+        op_vals = [0, 1, 1, 0, 0]
+        op_kt_str = "; ".join(f"{t:.4f}" for t in op_kt)
+        op_val_str = "; ".join(str(v) for v in op_vals)
+        anim_opacity = (
+            f'<animate attributeName="opacity" values="{op_val_str}" '
+            f'keyTimes="{op_kt_str}" dur="{cycle_dur}s" '
+            f'begin="{begin:.3f}s" repeatCount="indefinite"/>'
         )
 
-    return out
+        body_parts.append(
+            f'<use href="#engine-trail" opacity="0">{anim_motion}{anim_opacity}</use>'
+        )
+
+        # Pink-pulse overlay on each waypoint connection point.
+        waypoint_times = [0.0]
+        cum = 0.0
+        for L in seg_lengths:
+            cum += L
+            waypoint_times.append(cum / total_length * travel_fraction)
+
+        for (vx, vy), t in zip(waypoints, waypoint_times):
+            if t == 0.0:
+                kt = [0.0, flash_half, 1.0]
+                vals = [1, 0, 0]
+            elif t + flash_half >= 1.0:
+                kt = [0.0, t - flash_half, 1.0]
+                vals = [0, 0, 1]
+            else:
+                kt = [0.0, t - flash_half, t, t + flash_half, 1.0]
+                vals = [0, 0, 1, 0, 0]
+            kt_str = "; ".join(f"{x:.4f}" for x in kt)
+            vs = "; ".join(str(v) for v in vals)
+            body_parts.append(
+                f'<circle cx="{vx:.3f}" cy="{vy:.3f}" r="{dot_radius}" '
+                f'fill="{color}" opacity="0">'
+                f'<animate attributeName="opacity" values="{vs}" '
+                f'keyTimes="{kt_str}" dur="{cycle_dur}s" '
+                f'begin="{begin:.3f}s" repeatCount="indefinite"/>'
+                f'</circle>'
+            )
+
+    return defs, "".join(body_parts)
 
 # Each entry: (label, icon_filename, label_text_or_None, tile_coords, icon_size).
 # Tile coords are (i, j): user_x = i * R*sqrt(3), user_y = j * 1.5 * R for
@@ -566,23 +597,18 @@ def build_engines_panel_svg(
                 f'dominant-baseline="middle" text-anchor="start">{text}</text>'
             )
 
-    # Shooting-dot animations: one (or more) per engine, all terminating
-    # on an IE vertex. Each entry contributes a leader, trails, and brief
-    # vertex flashes along its path.
-    anim_elements: list[str] = []
-    for path in _engine_to_ie_paths(R):
-        anim_elements.extend(_build_path_animation(
-            path, dot_radius=dot_radius, color=LOGO_ANIM_COLOR,
-        ))
+    # Engine→IE shooting-line animations (with vertex flashes)
+    anim_defs, anim_body = _build_engine_animations(R, dot_radius=dot_radius)
 
     vb_x = -viewbox_w / 2
     vb_y = -viewbox_h / 2
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+<defs>{anim_defs}</defs>
 <g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
 <g fill="{color}">{"".join(dot_marks)}</g>
 {"".join(logo_html)}
-{"".join(anim_elements)}
+{anim_body}
 </svg>'''
 
 
