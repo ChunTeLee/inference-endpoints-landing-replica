@@ -234,8 +234,8 @@ LOGO_GROUPS = [
     ("IE",           "inference-endpoints.svg", None,           [(0, 0)]),
     ("SGLang",       "engine-3.svg",            "SGL",          [(-2, -2), (-1, -2)]),
     ("vLLM",         "engine-2.svg",            "vLLM",         [(1, -2),  (2, -2)]),
-    ("LlamaCpp",     "engine-4.svg",            "LLaMA",        [(-2, 0),  (-1, 0)]),
-    ("TGI",          "engine-5.svg",            "TGI",          [(1, 0),   (2, 0)]),
+    ("LlamaCpp",     "engine-4.svg",            "LLaMA",        [(-3, 0),  (-2, 0)]),
+    ("TGI",          "engine-5.svg",            "TGI",          [(2, 0),   (3, 0)]),
     ("Transformers", "engine-1.svg",            "Transformers", [(-1, 2),  (0, 2), (1, 2)]),
 ]
 
