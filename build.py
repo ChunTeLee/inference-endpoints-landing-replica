@@ -267,13 +267,13 @@ def _engine_to_ie_paths(R: float) -> list[list[tuple[float, float]]]:
 
 def _build_engine_animations(
     R: float,
-    cycle_dur: float = 6.0,
+    cycle_dur: float = 14.0,
     speed: float = 40.0,
     dot_radius: float = 2.0,
     color: str = LOGO_ANIM_COLOR,
-    trail_length: float = 26.0,
+    trail_length: float = 39.0,     # 1.5× the previous 26
     line_thickness: float = 1.6,
-    flash_half: float = 0.022,
+    flash_half: float = 0.012,
 ) -> tuple[str, str]:
     """Build the engine→IE traveling-line animations.
 
@@ -553,6 +553,7 @@ def build_engines_panel_svg(
                                     # visually align with the monospace
                                     # cap-text mid-line, not its em-box mid.
                                     # Applied to logos with text only.
+    taken_dash: str = "3 3",        # dasharray for hex segments under logos
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
@@ -576,13 +577,12 @@ def build_engines_panel_svg(
     j_max = int(viewbox_h / 2 / (1.5 * R)) + 2
     i_max = int(viewbox_w / 2 / (R * s3)) + 2
 
-    hex_paths: list[str] = []
+    hex_paths: list[str] = []        # solid grid (non-taken tiles)
+    taken_hex_paths: list[str] = []  # dashed grid (taken tiles — under logos)
     dot_marks: list[str] = []
 
     for j in range(-j_max, j_max + 1):
         for i in range(-i_max, i_max + 1):
-            if (i, j) in taken:
-                continue
             cx, cy = _tile_center(i, j, R)
             verts = [
                 (cx,               cy - R),
@@ -605,15 +605,22 @@ def build_engines_panel_svg(
                 f" M {cx:.2f} {cy:.2f} L {verts[2][0]:.2f} {verts[2][1]:.2f}"
                 f" M {cx:.2f} {cy:.2f} L {verts[4][0]:.2f} {verts[4][1]:.2f}"
             )
-            hex_paths.append(outline + y_arms)
-            # 7 dots per hex (center + 6 vertices). Dots at shared vertices
-            # are drawn by multiple hexes but overlap at the same coords.
-            for vx, vy in verts + [(cx, cy)]:
-                dot_marks.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="{dot_radius}"/>')
+            tile_path = outline + y_arms
 
-    # Combined stroke path for all hex outlines + Y-arms (much smaller
-    # output than one <path> per hex).
+            if (i, j) in taken:
+                # Logos sit on these tiles — keep the cube structure visible
+                # but as a dashed ghost so the lines read as "behind" the logo.
+                taken_hex_paths.append(tile_path)
+            else:
+                hex_paths.append(tile_path)
+                # Dots only on the solid grid; taken tiles stay clean under
+                # their logo + label so the connection points don't clash.
+                for vx, vy in verts + [(cx, cy)]:
+                    dot_marks.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="{dot_radius}"/>')
+
+    # Combined stroke paths (much smaller output than one <path> per hex).
     combined_path = " ".join(hex_paths)
+    combined_taken_path = " ".join(taken_hex_paths)
 
     # Logo elements
     # IBM Plex Mono advance width is ~0.6 of font-size (600 units in 1000-unit em).
@@ -656,6 +663,7 @@ def build_engines_panel_svg(
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
 <defs>{anim_defs}</defs>
+<g fill="none" stroke="{color}" stroke-width="{line_width}" stroke-dasharray="{taken_dash}"><path d="{combined_taken_path}"/></g>
 <g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
 <g fill="{color}">{"".join(dot_marks)}</g>
 {"".join(logo_html)}
@@ -679,8 +687,11 @@ def inject_engine_cube_pattern(html: str) -> str:
     if target not in html:
         return html
     pattern_svg = build_engines_panel_svg()
+    # Drop the original bg-gray-50 so the panel inherits the page's white
+    # background — the cube pattern + dashed logo ghosts now read against
+    # the same canvas as the rest of the page.
     replacement = (
-        '<div class="relative z-1 grid bg-gray-50 lg:col-span-3 overflow-hidden">'
+        '<div class="relative z-1 grid lg:col-span-3 overflow-hidden">'
         f'{pattern_svg}</div>'
     )
     return html.replace(target, replacement, 1)
