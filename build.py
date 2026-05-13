@@ -344,9 +344,9 @@ def build_engines_panel_svg(
     viewbox_h: float = VIEWBOX_H,
     line_width: float = 1.0,
     dot_radius: float = 2.0,
-    icon_size: float = 56.0,
+    icon_size: float = 30.0,
     font_size: float = 24.0,
-    text_gap: float = 8.0,
+    text_gap: float = 6.0,
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
