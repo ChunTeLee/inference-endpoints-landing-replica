@@ -415,25 +415,33 @@ def build_engines_panel_svg(
     combined_path = " ".join(hex_paths)
 
     # Logo elements
+    # IBM Plex Mono advance width is ~0.6 of font-size (600 units in 1000-unit em).
+    MONO_CHAR_WIDTH_RATIO = 0.6
     logo_html: list[str] = []
     for name, icon_file, text, tiles, this_icon_size in LOGO_GROUPS:
-        icon_cx, icon_cy = _tile_center(*tiles[0], R)
-        # The text-alignment nudge only applies when there's text — the IE
-        # logo at the center stands alone in its tile, no need to shift up.
+        # Geometric center of all tiles this logo occupies — combo gets
+        # centered here so the icon+text reads as a balanced unit.
+        tile_centers = [_tile_center(*t, R) for t in tiles]
+        combo_cx = sum(cx for cx, _ in tile_centers) / len(tile_centers)
+        combo_cy = sum(cy for _, cy in tile_centers) / len(tile_centers)
         nudge = icon_y_adjust if text else 0.0
-        ix = icon_cx - this_icon_size / 2
-        iy = icon_cy - this_icon_size / 2 + nudge
+
+        if text:
+            text_width = len(text) * font_size * MONO_CHAR_WIDTH_RATIO
+            combo_width = this_icon_size + text_gap + text_width
+            icon_left = combo_cx - combo_width / 2
+            text_x = icon_left + this_icon_size + text_gap
+        else:
+            icon_left = combo_cx - this_icon_size / 2
+
+        iy = combo_cy - this_icon_size / 2 + nudge
         logo_html.append(
-            f'<image href="assets/logos/{icon_file}" x="{ix:.2f}" y="{iy:.2f}" '
+            f'<image href="assets/logos/{icon_file}" x="{icon_left:.2f}" y="{iy:.2f}" '
             f'width="{this_icon_size}" height="{this_icon_size}" preserveAspectRatio="xMidYMid meet"/>'
         )
         if text:
-            # Text starts just right of the icon, vertically centered to
-            # the icon row.
-            text_x = icon_cx + this_icon_size / 2 + text_gap
-            text_y = icon_cy
             logo_html.append(
-                f'<text x="{text_x:.2f}" y="{text_y:.2f}" '
+                f'<text x="{text_x:.2f}" y="{combo_cy:.2f}" '
                 f'font-family="\'IBM Plex Mono\', monospace" font-weight="400" '
                 f'font-size="{font_size}" fill="{LOGO_TEXT_COLOR}" '
                 f'dominant-baseline="middle" text-anchor="start">{text}</text>'
