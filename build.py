@@ -273,6 +273,7 @@ def _build_engine_animations(
     color: str = LOGO_ANIM_COLOR,
     trail_length: float = 39.0,     # 1.5× the previous 26
     line_thickness: float = 1.6,
+    line_opacity: float = 0.6,
     flash_half: float = 0.012,
 ) -> tuple[str, str]:
     """Build the engine→IE traveling-line animations.
@@ -382,8 +383,9 @@ def _build_engine_animations(
         do_vs = "; ".join(f"{v:.3f}" for v in do_values)
 
         body_parts.append(
-            f'<path d="{path_d}" stroke="{color}" stroke-width="{line_thickness}" '
-            f'fill="none" stroke-linecap="round" stroke-linejoin="round" '
+            f'<path d="{path_d}" stroke="{color}" stroke-opacity="{line_opacity}" '
+            f'stroke-width="{line_thickness}" fill="none" '
+            f'stroke-linecap="round" stroke-linejoin="round" '
             f'stroke-dasharray="0,{BIG_GAP}" stroke-dashoffset="0">'
             f'<animate attributeName="stroke-dasharray" values="{da_vs}" '
             f'keyTimes="{da_kt_str}" dur="{cycle_dur}s" begin="{begin:.3f}s" '
