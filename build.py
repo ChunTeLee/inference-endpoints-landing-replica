@@ -221,6 +221,32 @@ def inject_engine_orbit(html: str) -> str:
 CUBE_PATTERN_COLOR = "#EDEFF2"
 
 
+LOGO_TEXT_COLOR = "#1F2937"   # dark slate for engine labels
+LOGO_TILE_R = 54.0            # hex radius used for the engines panel
+VIEWBOX_W = 800.0
+VIEWBOX_H = 440.0
+
+# Each entry: (label, icon_filename, label_text_or_None, tile_coords).
+# Tile coords are (i, j): user_x = i * R*sqrt(3), user_y = j * 1.5 * R for
+# even j (odd j adds half a column offset, but our layout uses even j only).
+# tile_coords[0] is the icon's tile; remaining entries are text-area tiles.
+LOGO_GROUPS = [
+    ("IE",           "inference-endpoints.svg", None,           [(0, 0)]),
+    ("SGLang",       "engine-3.svg",            "SGL",          [(-2, -2), (-1, -2)]),
+    ("vLLM",         "engine-2.svg",            "vLLM",         [(1, -2),  (2, -2)]),
+    ("LlamaCpp",     "engine-4.svg",            "LLaMA",        [(-2, 0),  (-1, 0)]),
+    ("TGI",          "engine-5.svg",            "TGI",          [(1, 0),   (2, 0)]),
+    ("Transformers", "engine-1.svg",            "Transformers", [(-1, 2),  (0, 2), (1, 2)]),
+]
+
+
+def _tile_center(i: int, j: int, R: float) -> tuple[float, float]:
+    from math import sqrt
+    s3 = sqrt(3)
+    x_offset = (R * s3 / 2) if (j % 2) else 0.0   # offset for odd rows
+    return (i * R * s3 + x_offset, j * 1.5 * R)
+
+
 def build_cube_pattern_svg(
     R: float = 54.0,
     line_width: float = 1.0,
@@ -312,13 +338,126 @@ def build_cube_pattern_svg(
 </svg>'''
 
 
+def build_engines_panel_svg(
+    R: float = LOGO_TILE_R,
+    viewbox_w: float = VIEWBOX_W,
+    viewbox_h: float = VIEWBOX_H,
+    line_width: float = 1.0,
+    dot_radius: float = 2.0,
+    icon_size: float = 56.0,
+    font_size: float = 24.0,
+    text_gap: float = 8.0,
+) -> str:
+    """Cube-pattern panel with engine logos + IBM Plex Mono labels.
+
+    Renders the cube grid hex-by-hex (rather than via SVG <pattern>) so
+    individual tiles can be omitted where logos sit. Each engine takes 2
+    hex tiles (icon + text); "Transformers" takes 3 because the label is
+    longer. The Inference Endpoints logo sits in the center tile, icon
+    only. Lines/dots are drawn only for hexes NOT taken by a logo."""
+    from math import sqrt
+    s3 = sqrt(3)
+    color = CUBE_PATTERN_COLOR
+
+    # Tiles occupied by logo content — pattern is suppressed on these.
+    taken: set[tuple[int, int]] = set()
+    for _, _, _, tiles in LOGO_GROUPS:
+        for t in tiles:
+            taken.add(t)
+
+    # Visible (i, j) bounds (with a margin so partially-clipped hexes still
+    # contribute their stroke segments along the panel edge).
+    j_max = int(viewbox_h / 2 / (1.5 * R)) + 2
+    i_max = int(viewbox_w / 2 / (R * s3)) + 2
+
+    hex_paths: list[str] = []
+    dot_marks: list[str] = []
+
+    for j in range(-j_max, j_max + 1):
+        for i in range(-i_max, i_max + 1):
+            if (i, j) in taken:
+                continue
+            cx, cy = _tile_center(i, j, R)
+            verts = [
+                (cx,               cy - R),
+                (cx + R * s3 / 2,  cy - R / 2),
+                (cx + R * s3 / 2,  cy + R / 2),
+                (cx,               cy + R),
+                (cx - R * s3 / 2,  cy + R / 2),
+                (cx - R * s3 / 2,  cy - R / 2),
+            ]
+            # Hex outline (6 edges) + 3 internal Y-lines from center to
+            # top / bottom-right / bottom-left vertices (the visible cube
+            # corner edges).
+            outline = (
+                f"M {verts[0][0]:.2f} {verts[0][1]:.2f} "
+                + " ".join(f"L {x:.2f} {y:.2f}" for x, y in verts[1:])
+                + " Z"
+            )
+            y_arms = (
+                f" M {cx:.2f} {cy:.2f} L {verts[0][0]:.2f} {verts[0][1]:.2f}"
+                f" M {cx:.2f} {cy:.2f} L {verts[2][0]:.2f} {verts[2][1]:.2f}"
+                f" M {cx:.2f} {cy:.2f} L {verts[4][0]:.2f} {verts[4][1]:.2f}"
+            )
+            hex_paths.append(outline + y_arms)
+            # 7 dots per hex (center + 6 vertices). Dots at shared vertices
+            # are drawn by multiple hexes but overlap at the same coords.
+            for vx, vy in verts + [(cx, cy)]:
+                dot_marks.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="{dot_radius}"/>')
+
+    # Combined stroke path for all hex outlines + Y-arms (much smaller
+    # output than one <path> per hex).
+    combined_path = " ".join(hex_paths)
+
+    # Logo elements
+    logo_html: list[str] = []
+    for name, icon_file, text, tiles in LOGO_GROUPS:
+        icon_cx, icon_cy = _tile_center(*tiles[0], R)
+        # Icon centered in the icon tile
+        ix = icon_cx - icon_size / 2
+        iy = icon_cy - icon_size / 2
+        logo_html.append(
+            f'<image href="assets/logos/{icon_file}" x="{ix:.2f}" y="{iy:.2f}" '
+            f'width="{icon_size}" height="{icon_size}" preserveAspectRatio="xMidYMid meet"/>'
+        )
+        if text:
+            # Text starts just right of the icon, vertically centered to
+            # the icon row.
+            text_x = icon_cx + icon_size / 2 + text_gap
+            text_y = icon_cy
+            logo_html.append(
+                f'<text x="{text_x:.2f}" y="{text_y:.2f}" '
+                f'font-family="\'IBM Plex Mono\', monospace" font-weight="300" '
+                f'font-size="{font_size}" fill="{LOGO_TEXT_COLOR}" '
+                f'dominant-baseline="middle" text-anchor="start">{text}</text>'
+            )
+
+    vb_x = -viewbox_w / 2
+    vb_y = -viewbox_h / 2
+
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+<g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
+<g fill="{color}">{"".join(dot_marks)}</g>
+{"".join(logo_html)}
+</svg>'''
+
+
+def ensure_mono_light_font(html: str) -> str:
+    """Add weight 300 to the IBM Plex Mono Google Fonts request so the
+    engine labels can render in light weight."""
+    return html.replace(
+        "family=IBM+Plex+Mono:wght@400;600;700",
+        "family=IBM+Plex+Mono:wght@300;400;600;700",
+    )
+
+
 def inject_engine_cube_pattern(html: str) -> str:
-    """Fill the engines section's right column with the isometric cube
-    pattern (alternative to the orbit graphic)."""
+    """Fill the engines section's right column with the cube pattern panel
+    (hex grid + 6 engine logos + IBM Plex Mono labels)."""
     target = '<div class="relative z-1 grid bg-gray-50 lg:col-span-3"></div>'
     if target not in html:
         return html
-    pattern_svg = build_cube_pattern_svg()
+    pattern_svg = build_engines_panel_svg()
     replacement = (
         '<div class="relative z-1 grid bg-gray-50 lg:col-span-3 overflow-hidden">'
         f'{pattern_svg}</div>'
@@ -347,6 +486,7 @@ def main() -> None:
     html = absolutize_srcset(html)
     html = absolutize_css_urls(html)
     html = localize_assets(html)
+    html = ensure_mono_light_font(html)
     html = inject_engine_cube_pattern(html)
 
     OUT.write_text(html, encoding="utf-8")
