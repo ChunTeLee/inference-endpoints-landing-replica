@@ -277,37 +277,33 @@ def _build_engine_animations(
 ) -> tuple[str, str]:
     """Build the engine→IE traveling-line animations.
 
-    Returns (defs_svg, body_svg). `defs_svg` defines a horizontal trail
-    sprite (a tapered line via linear gradient) plus the gradient itself.
-    `body_svg` instantiates the sprite per path with <animateMotion>, plus
-    a brief pink pulse overlay on every waypoint connection point.
+    Each line is rendered as a single <path> with the same waypoints as
+    the conceptual route. We animate stroke-dasharray (the dash length)
+    and stroke-dashoffset (the tail's path position) together to produce
+    a 3-phase lifecycle:
 
-    11 traveling lines total, evenly staggered across the cycle so that
-    at most ~5 are simultaneously visible. Speed is intentionally low
-    (40 user units/sec) for a subtle feel."""
+      1. GROW — head moves forward from the start vertex, tail stays put
+                so the visible dash grows from 0 to `trail_length`.
+      2. TRAVEL — head and tail both advance at the same speed; the
+                  visible dash slides along the path at constant length.
+                  Because the stroke follows the actual <path>, it bends
+                  naturally at every waypoint.
+      3. SHRINK — head holds at the end vertex while the tail catches up,
+                  collapsing the dash back to 0 at the IE connection dot.
+
+    Stroke-linecap & linejoin are both "round" so the line ends and
+    corners read as smooth curves rather than sharp edges."""
     from math import sqrt
 
     paths = _engine_to_ie_paths(R)
     n_paths = len(paths)
     stagger = cycle_dur / n_paths
 
-    # --- defs: gradient + trail sprite ---
-    defs = "".join([
-        f'<linearGradient id="engine-line-grad" x1="0" y1="0" x2="1" y2="0">',
-        f'<stop offset="0" stop-color="{color}" stop-opacity="0"/>',
-        f'<stop offset="1" stop-color="{color}" stop-opacity="1"/>',
-        f'</linearGradient>',
-        # Trail extends from x=-trail_length (transparent tail) to x=0 (solid head).
-        # Centered vertically. rx rounds the cap; the gradient hides it on the tail.
-        f'<g id="engine-trail">'
-        f'<rect x="{-trail_length:.2f}" y="{-line_thickness/2:.2f}" '
-        f'width="{trail_length:.2f}" height="{line_thickness:.2f}" '
-        f'fill="url(#engine-line-grad)" rx="{line_thickness/2:.2f}"/>'
-        f'</g>',
-    ])
-
-    # --- body: one <use> per path + per-waypoint flash overlays ---
+    # No <defs> needed for this renderer — every path is self-contained.
+    defs = ""
     body_parts: list[str] = []
+    BIG_GAP = 99999  # ensures only one dash window is ever visible on the path
+
     for idx, waypoints in enumerate(paths):
         begin = idx * stagger
         seg_lengths = [
@@ -316,59 +312,114 @@ def _build_engine_animations(
             for i in range(len(waypoints) - 1)
         ]
         total_length = sum(seg_lengths)
-        travel_time = total_length / speed
-        travel_fraction = travel_time / cycle_dur
+
+        # Cap trail so a short path still has room for grow/travel/shrink.
+        L = min(trail_length, total_length * 0.6)
+
+        # Phase durations (head moves at constant `speed` during grow & travel).
+        t_grow = L / speed
+        t_travel = (total_length - L) / speed
+        t_shrink = L / speed
+        t_total = t_grow + t_travel + t_shrink
+
+        # Squeeze if the path is so short its lifecycle would overflow the cycle.
+        if t_total > cycle_dur:
+            scale = cycle_dur / t_total * 0.95
+            t_grow *= scale
+            t_travel *= scale
+            t_shrink *= scale
+            t_total = t_grow + t_travel + t_shrink
+
+        # Cycle fractions for each phase boundary.
+        f_grow = t_grow / cycle_dur
+        f_travel = (t_grow + t_travel) / cycle_dur
+        f_end = t_total / cycle_dur
 
         path_d = "M " + " L ".join(f"{x:.3f},{y:.3f}" for x, y in waypoints)
 
-        # animateMotion: travel from start (keyPoint 0) to end (keyPoint 1)
-        # during the first travel_fraction of the cycle; hold at the end
-        # for the remainder.
-        anim_motion = (
-            f'<animateMotion dur="{cycle_dur}s" begin="{begin:.3f}s" '
-            f'repeatCount="indefinite" rotate="auto" path="{path_d}" '
-            f'keyTimes="0; {travel_fraction:.4f}; 1" keyPoints="0; 1; 1"/>'
-        )
+        # stroke-dasharray over time: 0 → L → L → 0 → 0 (idle)
+        da_values = [
+            f"0,{BIG_GAP}",
+            f"{L:.2f},{BIG_GAP}",
+            f"{L:.2f},{BIG_GAP}",
+            f"0,{BIG_GAP}",
+            f"0,{BIG_GAP}",
+        ]
+        da_kt = [0.0, f_grow, f_travel, f_end, 1.0]
 
-        # Opacity envelope: invisible before travel, fade in, hold, fade out
-        fade = 0.03
-        op_kt = [0.0, fade, max(fade, travel_fraction - fade), travel_fraction, 1.0]
-        op_vals = [0, 1, 1, 0, 0]
-        op_kt_str = "; ".join(f"{t:.4f}" for t in op_kt)
-        op_val_str = "; ".join(str(v) for v in op_vals)
-        anim_opacity = (
-            f'<animate attributeName="opacity" values="{op_val_str}" '
-            f'keyTimes="{op_kt_str}" dur="{cycle_dur}s" '
-            f'begin="{begin:.3f}s" repeatCount="indefinite"/>'
-        )
+        # stroke-dashoffset over time: 0 → 0 → -(total-L) → -total → -total
+        # During grow the tail stays at 0; during travel & shrink the tail
+        # advances along the path at the same constant speed.
+        do_values = [0.0, 0.0, -(total_length - L), -total_length, -total_length]
+        do_kt = [0.0, f_grow, f_travel, f_end, 1.0]
+
+        da_kt_str = "; ".join(f"{x:.4f}" for x in da_kt)
+        da_vs = "; ".join(da_values)
+        do_kt_str = "; ".join(f"{x:.4f}" for x in do_kt)
+        do_vs = "; ".join(f"{v:.3f}" for v in do_values)
 
         body_parts.append(
-            f'<use href="#engine-trail" opacity="0">{anim_motion}{anim_opacity}</use>'
+            f'<path d="{path_d}" stroke="{color}" stroke-width="{line_thickness}" '
+            f'fill="none" stroke-linecap="round" stroke-linejoin="round" '
+            f'stroke-dasharray="0,{BIG_GAP}" stroke-dashoffset="0">'
+            f'<animate attributeName="stroke-dasharray" values="{da_vs}" '
+            f'keyTimes="{da_kt_str}" dur="{cycle_dur}s" begin="{begin:.3f}s" '
+            f'repeatCount="indefinite" calcMode="linear"/>'
+            f'<animate attributeName="stroke-dashoffset" values="{do_vs}" '
+            f'keyTimes="{do_kt_str}" dur="{cycle_dur}s" begin="{begin:.3f}s" '
+            f'repeatCount="indefinite" calcMode="linear"/>'
+            f'</path>'
         )
 
-        # Pink-pulse overlay on each waypoint connection point.
-        waypoint_times = [0.0]
+        # Pink-pulse overlay on each waypoint: lit while the line is "on" the
+        # vertex — from when the head first reaches it to when the tail
+        # leaves it. This makes the connection points light up naturally as
+        # the line bends through them and disappears into the IE dot.
+        waypoint_pos = [0.0]
         cum = 0.0
-        for L in seg_lengths:
-            cum += L
-            waypoint_times.append(cum / total_length * travel_fraction)
+        for seg_L in seg_lengths:
+            cum += seg_L
+            waypoint_pos.append(cum)
 
-        for (vx, vy), t in zip(waypoints, waypoint_times):
-            if t == 0.0:
-                kt = [0.0, flash_half, 1.0]
-                vals = [1, 0, 0]
-            elif t + flash_half >= 1.0:
-                kt = [0.0, t - flash_half, 1.0]
-                vals = [0, 0, 1]
+        for (vx, vy), p in zip(waypoints, waypoint_pos):
+            # Time when the head reaches this position.
+            if p <= L:
+                t_head = p / speed
             else:
-                kt = [0.0, t - flash_half, t, t + flash_half, 1.0]
-                vals = [0, 0, 1, 0, 0]
+                t_head = t_grow + (p - L) / speed
+            # Time when the tail reaches this position.
+            if p == 0:
+                t_tail = t_grow  # tail stays at 0 during the grow phase
+            elif p >= total_length - L:
+                t_tail = t_grow + t_travel + (p - (total_length - L)) / speed
+            else:
+                t_tail = t_grow + p / speed
+
+            on_start = min(t_head, t_total) / cycle_dur
+            on_end = min(t_tail, t_total) / cycle_dur
+            # Clamp / fall back to a brief pulse if the window is degenerate.
+            if on_end <= on_start:
+                on_end = min(on_start + flash_half, 1.0)
+            fade_w = min(flash_half, max(0.001, (on_end - on_start) / 4))
+            pre = max(0.0, on_start - fade_w)
+            post = min(1.0, on_end + fade_w)
+
+            if on_start <= 0.0:
+                kt = [0.0, on_end, post, 1.0]
+                vals = [1, 1, 0, 0]
+            elif post >= 1.0:
+                kt = [0.0, pre, on_start, 1.0]
+                vals = [0, 0, 1, 1]
+            else:
+                kt = [0.0, pre, on_start, on_end, post, 1.0]
+                vals = [0, 0, 1, 1, 0, 0]
+
             kt_str = "; ".join(f"{x:.4f}" for x in kt)
-            vs = "; ".join(str(v) for v in vals)
+            vs_str = "; ".join(str(v) for v in vals)
             body_parts.append(
                 f'<circle cx="{vx:.3f}" cy="{vy:.3f}" r="{dot_radius}" '
                 f'fill="{color}" opacity="0">'
-                f'<animate attributeName="opacity" values="{vs}" '
+                f'<animate attributeName="opacity" values="{vs_str}" '
                 f'keyTimes="{kt_str}" dur="{cycle_dur}s" '
                 f'begin="{begin:.3f}s" repeatCount="indefinite"/>'
                 f'</circle>'
