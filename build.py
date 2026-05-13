@@ -473,6 +473,27 @@ def _tile_center(i: int, j: int, R: float) -> tuple[float, float]:
     return (i * R * s3 + x_offset, j * 1.5 * R)
 
 
+def _hex_edge_neighbor(i: int, j: int, edge_idx: int) -> tuple[int, int]:
+    """Return the (i, j) of the neighbor that shares `edge_idx` of hex (i, j).
+
+    Edges are labeled clockwise starting from the upper-right:
+      0: top → top-right        (NE neighbor)
+      1: top-right → bottom-right (E)
+      2: bottom-right → bottom  (SE)
+      3: bottom → bottom-left   (SW)
+      4: bottom-left → top-left (W)
+      5: top-left → top         (NW)
+
+    For pointy-top tilings, NE/NW/SE/SW depend on row parity."""
+    odd = (j % 2) != 0
+    if edge_idx == 0: return (i + (1 if odd else 0), j - 1)
+    if edge_idx == 1: return (i + 1, j)
+    if edge_idx == 2: return (i + (1 if odd else 0), j + 1)
+    if edge_idx == 3: return (i + (0 if odd else -1), j + 1)
+    if edge_idx == 4: return (i - 1, j)
+    return (i + (0 if odd else -1), j - 1)
+
+
 def build_cube_pattern_svg(
     R: float = 54.0,
     line_width: float = 1.0,
@@ -615,27 +636,39 @@ def build_engines_panel_svg(
                 (cx - R * s3 / 2,  cy + R / 2),
                 (cx - R * s3 / 2,  cy - R / 2),
             ]
-            # Hex outline (6 edges) + 3 internal Y-lines from center to
-            # top / bottom-right / bottom-left vertices (the visible cube
-            # corner edges).
-            outline = (
-                f"M {verts[0][0]:.2f} {verts[0][1]:.2f} "
-                + " ".join(f"L {x:.2f} {y:.2f}" for x, y in verts[1:])
-                + " Z"
-            )
+            # 3 internal Y-lines from center to top / BR / BL vertices (the
+            # visible cube corner edges) — always drawn; never shared with
+            # neighbors, so neither side has to skip them.
             y_arms = (
                 f" M {cx:.2f} {cy:.2f} L {verts[0][0]:.2f} {verts[0][1]:.2f}"
                 f" M {cx:.2f} {cy:.2f} L {verts[2][0]:.2f} {verts[2][1]:.2f}"
                 f" M {cx:.2f} {cy:.2f} L {verts[4][0]:.2f} {verts[4][1]:.2f}"
             )
-            tile_path = outline + y_arms
 
             if (i, j) in taken:
-                # Logos sit on these tiles — keep the cube structure visible
-                # but as a dashed ghost so the lines read as "behind" the logo.
-                taken_hex_paths.append(tile_path)
+                # Engine tile: draw the full 6-edge outline + Y as a single
+                # closed path so the dashed stroke runs continuously.
+                outline = (
+                    f"M {verts[0][0]:.2f} {verts[0][1]:.2f} "
+                    + " ".join(f"L {x:.2f} {y:.2f}" for x, y in verts[1:])
+                    + " Z"
+                )
+                taken_hex_paths.append(outline + y_arms)
             else:
-                hex_paths.append(tile_path)
+                # Empty tile: build the outline edge-by-edge and OMIT any
+                # edge shared with a taken neighbor — that edge is already
+                # drawn (dashed) by the engine tile. Drawing the solid
+                # version from this side would visually overwrite it.
+                edge_segs: list[str] = []
+                for e in range(6):
+                    if _hex_edge_neighbor(i, j, e) in taken:
+                        continue
+                    v0 = verts[e]
+                    v1 = verts[(e + 1) % 6]
+                    edge_segs.append(
+                        f"M {v0[0]:.2f} {v0[1]:.2f} L {v1[0]:.2f} {v1[1]:.2f}"
+                    )
+                hex_paths.append(" ".join(edge_segs) + " " + y_arms)
                 # Dots only on the solid grid; taken tiles stay clean under
                 # their logo + label so the connection points don't clash.
                 for vx, vy in verts + [(cx, cy)]:
