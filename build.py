@@ -222,9 +222,9 @@ CUBE_PATTERN_COLOR = "#EDEFF2"
 
 
 def build_cube_pattern_svg(
-    R: float = 30.0,
+    R: float = 90.0,
     line_width: float = 1.0,
-    dot_radius: float = 1.8,
+    dot_radius: float = 2.0,
 ) -> str:
     """Repeating SVG pattern of isometric 3D cubes — pointy-top hexagonal cells
     with three internal lines from center to alternating vertices (the visible
@@ -238,9 +238,17 @@ def build_cube_pattern_svg(
     ph = R * 3            # pattern cell height
     color = CUBE_PATTERN_COLOR
 
-    # Two hex centers that produce a seamless honeycomb when the cell tiles:
-    # one fully inside the cell, one straddling the left/right edges.
-    centers = [(R * s3 / 2, R), (0.0, 5 * R / 2)]
+    # Hex1 sits fully inside the cell. Hex2 straddles a cell boundary in
+    # honeycomb tilings — to avoid missing segments where SVG clips at the
+    # cell edge, we draw hex2 at ALL FOUR equivalent positions so every
+    # neighboring tile contributes its visible portion.
+    centers = [
+        (R * s3 / 2, R),       # hex1 — fully inside
+        (0.0, 5 * R / 2),      # hex2 at LEFT edge, BOTTOM-overflow (right-top half in this cell)
+        (pw,  5 * R / 2),      # hex2 at RIGHT edge, BOTTOM-overflow (left-top half in this cell)
+        (0.0, -R / 2),         # hex2 at LEFT edge, TOP-overflow (right-bottom quarter in this cell)
+        (pw,  -R / 2),         # hex2 at RIGHT edge, TOP-overflow (left-bottom quarter in this cell)
+    ]
 
     def hex_verts(cx: float, cy: float):
         # Pointy-top hexagon vertices: top, top-right, bottom-right, bottom, bottom-left, top-left.
