@@ -222,16 +222,23 @@ CUBE_PATTERN_COLOR = "#EDEFF2"
 
 
 def build_cube_pattern_svg(
-    R: float = 90.0,
+    R: float = 54.0,
     line_width: float = 1.0,
     dot_radius: float = 2.0,
+    viewbox_w: float = 800.0,
+    viewbox_h: float = 440.0,
 ) -> str:
     """Repeating SVG pattern of isometric 3D cubes — pointy-top hexagonal cells
     with three internal lines from center to alternating vertices (the visible
     cube edges) and a dot at every vertex.
 
-    The pattern cell holds 2 hexagons offset so the tiling forms a continuous
-    honeycomb without seams. Pure decoration, aria-hidden."""
+    R is tuned for the engines panel size so ~5 rows of cubes are visible.
+    The viewBox is centered at (0, 0) and the pattern is shifted so a hex1
+    center (a connection-point dot) lands exactly on viewBox (0, 0). Combined
+    with preserveAspectRatio="xMidYMid slice", that dot stays centered in the
+    panel regardless of resize.
+
+    Pure decoration, aria-hidden."""
     from math import sqrt
     s3 = sqrt(3)
     pw = R * s3           # pattern cell width
@@ -285,14 +292,23 @@ def build_cube_pattern_svg(
     path_d = " ".join(path_cmds)
     dots = "".join(dot_circles)
 
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    # Translate the pattern so hex1's center (LOCAL R*s3/2, R) lands on user
+    # coordinate (0, 0) — which sits at the viewBox center, which (via slice)
+    # is the panel center.
+    px_shift = -R * s3 / 2
+    py_shift = -R
+
+    vb_x = -viewbox_w / 2
+    vb_y = -viewbox_h / 2
+
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.3f} {vb_y:.3f} {viewbox_w:.3f} {viewbox_h:.3f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
   <defs>
-    <pattern id="cube-grid" patternUnits="userSpaceOnUse" width="{pw:.3f}" height="{ph:.3f}">
+    <pattern id="cube-grid" patternUnits="userSpaceOnUse" width="{pw:.3f}" height="{ph:.3f}" patternTransform="translate({px_shift:.3f} {py_shift:.3f})">
       <path d="{path_d}" stroke="{color}" stroke-width="{line_width}" fill="none"/>
       {dots}
     </pattern>
   </defs>
-  <rect width="100%" height="100%" fill="url(#cube-grid)"/>
+  <rect x="{vb_x:.3f}" y="{vb_y:.3f}" width="{viewbox_w:.3f}" height="{viewbox_h:.3f}" fill="url(#cube-grid)"/>
 </svg>'''
 
 
