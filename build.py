@@ -427,7 +427,7 @@ def build_engines_panel_svg(
             text_y = icon_cy
             logo_html.append(
                 f'<text x="{text_x:.2f}" y="{text_y:.2f}" '
-                f'font-family="\'IBM Plex Mono\', monospace" font-weight="300" '
+                f'font-family="\'IBM Plex Mono\', monospace" font-weight="400" '
                 f'font-size="{font_size}" fill="{LOGO_TEXT_COLOR}" '
                 f'dominant-baseline="middle" text-anchor="start">{text}</text>'
             )
