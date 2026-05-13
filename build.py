@@ -772,6 +772,101 @@ def ensure_mono_light_font(html: str) -> str:
     )
 
 
+CORE_SECTION_PHRASES = (
+    "Everything you need to deploy AI models at scale",   # Features row
+    "Powered by the best open-source inference engines",  # Engines row
+    "Choose a plan that fits your needs",                 # Pricing row
+)
+
+
+def _iter_top_sections(s: str):
+    """Yield (start, end) byte spans of every top-level <section> in s."""
+    pos = 0
+    while pos < len(s):
+        m = re.search(r"<section\b[^>]*>", s[pos:])
+        if not m:
+            return
+        start = pos + m.start()
+        depth = 1
+        i = pos + m.end()
+        while i < len(s) and depth > 0:
+            n = re.search(r"<(/?)section\b[^>]*>", s[i:])
+            if not n:
+                return
+            depth += -1 if n.group(1) == "/" else 1
+            i += n.end()
+        yield (start, i)
+        pos = i
+
+
+def _iter_top_row_divs(s: str):
+    """Yield (start, end) of top-level <div class="mx-auto grid max-w-7xl ...">
+    content rows in s — each is one of the "two-column" content sections."""
+    pattern = re.compile(r'<div\s+class="mx-auto\s+grid\s+max-w-7xl[^"]*"[^>]*>')
+    pos = 0
+    while pos < len(s):
+        m = pattern.search(s, pos)
+        if not m:
+            return
+        start = m.start()
+        depth = 1
+        i = m.end()
+        while i < len(s) and depth > 0:
+            nm = re.search(r"<(/?)div\b[^>]*>", s[i:])
+            if not nm:
+                return
+            depth += -1 if nm.group(1) == "/" else 1
+            i += nm.end()
+        yield (start, i)
+        pos = i
+
+
+def trim_to_core_sections(html: str) -> str:
+    """Hide every top-level <section> that doesn't contain a Features /
+    Engines / Pricing heading. Inside the Features-containing section,
+    also hide the Deployment content row (it's a sibling row of Features
+    in the SvelteKit markup, not its own section).
+
+    Header / nav are left untouched."""
+    body_start = html.find("<body>")
+    body_end = html.find("</body>") + len("</body>")
+    body = html[body_start:body_end]
+
+    out: list[str] = []
+    cursor = 0
+    for s, e in _iter_top_sections(body):
+        out.append(body[cursor:s])
+        sec_html = body[s:e]
+        has_core = any(p in sec_html for p in CORE_SECTION_PHRASES)
+        if not has_core:
+            sec_html = re.sub(
+                r"<section\b",
+                '<section style="display:none"',
+                sec_html,
+                count=1,
+            )
+        elif "One-click deployment" in sec_html:
+            # Features lives in the same <section> as Deployment — hide
+            # the Deployment row (the first content row) only.
+            rows = list(_iter_top_row_divs(sec_html))
+            if rows:
+                r0_s, r0_e = rows[0]
+                if "One-click deployment" in sec_html[r0_s:r0_e]:
+                    row_html = sec_html[r0_s:r0_e]
+                    row_html = re.sub(
+                        r"<div\b",
+                        '<div style="display:none"',
+                        row_html,
+                        count=1,
+                    )
+                    sec_html = sec_html[:r0_s] + row_html + sec_html[r0_e:]
+        out.append(sec_html)
+        cursor = e
+    out.append(body[cursor:])
+
+    return html[:body_start] + "".join(out) + html[body_end:]
+
+
 def inject_engine_cube_pattern(html: str) -> str:
     """Fill the engines section's right column with the cube pattern panel
     (hex grid + 6 engine logos + IBM Plex Mono labels)."""
@@ -812,6 +907,7 @@ def main() -> None:
     html = localize_assets(html)
     html = ensure_mono_light_font(html)
     html = inject_engine_cube_pattern(html)
+    html = trim_to_core_sections(html)
 
     OUT.write_text(html, encoding="utf-8")
     print(f"Wrote {OUT} ({len(html):,} chars)")
