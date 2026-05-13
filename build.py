@@ -134,36 +134,19 @@ ORBIT_SLOTS = [
 # decorative ring stroke weight so containers blend with the orbit linework.
 SLOT_STROKE = "rgba(0,0,0,0.10)"
 
-# Decorative concentric bands around the center. Each entry is
-# (outer_radius, band_fill_opacity, stroke_opacity).
-#
-# The band extends from the PREVIOUS entry's radius to this entry's radius
-# (the innermost band is a full disc from 0). Fill opacity applies to that
-# band exclusively — rendered as a donut path so opacities don't stack.
-# This produces a visible step at each ring boundary instead of a smooth fade.
-# Gaps between rings still grow monotonically (220 → 240 → 263 → 287 → 313).
-DECOR_BANDS = [
-    (364.0,   0.55, 0.085),  # inside the inner orbit ring (full disc)
-    (571.7,   0.38, 0.075),  # between inner and outer orbit rings
-    (792.0,   0.23, 0.060),
-    (1032.0,  0.13, 0.045),
-    (1295.0,  0.07, 0.032),
-    (1582.0,  0.03, 0.022),
-    (1895.0,  0.01, 0.014),
+# All decorative rings around the center, ordered from innermost to outermost.
+# Each entry: (radius, fill_opacity, stroke_opacity). Outline strokes are
+# unchanged; fills use white at decreasing opacity outward, starting at 50%
+# on the innermost ring. Gaps grow monotonically (220 → 240 → 263 → 287 → 313).
+DECOR_RINGS = [
+    (364.0, 0.50, 0.085),   # inner orbit ring
+    (571.7, 0.38, 0.075),   # outer orbit ring
+    (792.0, 0.27, 0.060),
+    (1032.0, 0.19, 0.045),
+    (1295.0, 0.13, 0.032),
+    (1582.0, 0.07, 0.022),
+    (1895.0, 0.04, 0.014),
 ]
-
-
-def _donut_path(cx: float, cy: float, r_inner: float, r_outer: float) -> str:
-    """Build an SVG path for a donut/annulus (outer circle minus inner circle).
-    Use with fill-rule="evenodd" so the inner area is cut out."""
-    return (
-        f"M {cx - r_outer} {cy} "
-        f"a {r_outer} {r_outer} 0 1 0 {2 * r_outer} 0 "
-        f"a {r_outer} {r_outer} 0 1 0 {-2 * r_outer} 0 Z "
-        f"M {cx - r_inner} {cy} "
-        f"a {r_inner} {r_inner} 0 1 0 {2 * r_inner} 0 "
-        f"a {r_inner} {r_inner} 0 1 0 {-2 * r_inner} 0 Z"
-    )
 
 
 def build_orbit_svg() -> str:
@@ -189,31 +172,15 @@ def build_orbit_svg() -> str:
     inner_items = "".join(slot(*s) for s in ORBIT_SLOTS if s[2] == "inner")
     outer_items = "".join(slot(*s) for s in ORBIT_SLOTS if s[2] == "outer")
 
-    # Render each band as a donut (or full disc for the innermost) at the
-    # band's specified opacity — no opacity stacking between bands, so the
-    # step at each ring boundary is clearly visible. Then draw the ring
-    # outline strokes on top.
-    cx, cy = 600.849, 649.706
-    band_fills = []
-    ring_strokes = []
-    prev_r = 0.0
-    for r, fop, _ in DECOR_BANDS:
-        if prev_r == 0.0:
-            band_fills.append(
-                f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="white" fill-opacity="{fop}"/>'
-            )
-        else:
-            band_fills.append(
-                f'<path fill="white" fill-opacity="{fop}" fill-rule="evenodd" '
-                f'd="{_donut_path(cx, cy, prev_r, r)}"/>'
-            )
-        prev_r = r
-    for r, _, sop in DECOR_BANDS:
-        ring_strokes.append(
-            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" '
-            f'stroke="#000" stroke-opacity="{sop}" stroke-width="2"/>'
-        )
-    rings = "".join(band_fills) + "".join(ring_strokes)
+    # Draw rings from outermost to innermost so each successive (smaller, denser)
+    # disc paints over the previous one — this gives a smooth radial fade where
+    # the area near the center looks more solidly white and the outer panels
+    # bleed into the page's bg-gray-50.
+    rings = "".join(
+        f'<circle cx="600.849" cy="649.706" r="{r}" fill="white" fill-opacity="{fop}" '
+        f'stroke="#000" stroke-opacity="{sop}" stroke-width="2"/>'
+        for r, fop, sop in reversed(DECOR_RINGS)
+    )
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="hub-orbit absolute inset-0 m-auto aspect-square" viewBox="0 0 1192 1293" fill="none" overflow="visible" role="img" aria-label="Inference Endpoints supports popular inference engines" style="max-width:100%;max-height:100%;overflow:visible">
 <style>
