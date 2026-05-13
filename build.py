@@ -592,7 +592,9 @@ def build_engines_panel_svg(
                                     # visually align with the monospace
                                     # cap-text mid-line, not its em-box mid.
                                     # Applied to logos with text only.
-    border_dash: str = "3 3",       # dasharray for all hex outline edges
+    border_dash: str = "8 5",       # dasharray for all hex outline edges
+                                    # — larger than "3 3" so the gaps read
+                                    # clearly as dashes at the rendered scale.
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
