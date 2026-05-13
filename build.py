@@ -299,13 +299,36 @@ def _build_engine_animations(
     n_paths = len(paths)
     stagger = cycle_dur / n_paths
 
+    # Path order in `paths` is grouped by engine (both SGL arms, both vLLM
+    # arms, ...). If we assign begin times in that order, consecutive lines
+    # emerge from the same side of the panel — looks clustered.
+    #
+    # This permutation maps path index → time slot so successive slots
+    # land on different engines spread around the panel:
+    #   slot 0=LLaMA-B, 1=SGL-A, 2=TGI-B, 3=Trans-M, 4=vLLM-A,
+    #   slot 5=LLaMA-T, 6=Trans-R, 7=SGL-B, 8=TGI-T, 9=Trans-L, 10=vLLM-B.
+    # No two adjacent slots share an engine.
+    time_slot = [
+        1,   # 0: SGL-A
+        7,   # 1: SGL-B
+        4,   # 2: vLLM-A
+        10,  # 3: vLLM-B
+        5,   # 4: LLaMA-T
+        0,   # 5: LLaMA-B
+        8,   # 6: TGI-T
+        2,   # 7: TGI-B
+        9,   # 8: Trans-L
+        3,   # 9: Trans-M
+        6,   # 10: Trans-R
+    ]
+
     # No <defs> needed for this renderer — every path is self-contained.
     defs = ""
     body_parts: list[str] = []
     BIG_GAP = 99999  # ensures only one dash window is ever visible on the path
 
     for idx, waypoints in enumerate(paths):
-        begin = idx * stagger
+        begin = time_slot[idx] * stagger
         seg_lengths = [
             sqrt((waypoints[i+1][0] - waypoints[i][0])**2 +
                  (waypoints[i+1][1] - waypoints[i][1])**2)
