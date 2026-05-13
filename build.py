@@ -592,7 +592,7 @@ def build_engines_panel_svg(
                                     # visually align with the monospace
                                     # cap-text mid-line, not its em-box mid.
                                     # Applied to logos with text only.
-    border_dash: str = "3 3",       # dasharray for all hex outline edges
+    taken_dash: str = "3 3",        # dasharray for hex segments under logos
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
@@ -616,12 +616,8 @@ def build_engines_panel_svg(
     j_max = int(viewbox_h / 2 / (1.5 * R)) + 2
     i_max = int(viewbox_w / 2 / (R * s3)) + 2
 
-    # Per-edge generation with deduplication so that every shared edge is
-    # drawn exactly once. Two stacked dashes at the same edge interlock
-    # (one's gaps fill the other's dashes) and end up reading as solid, so
-    # we MUST avoid double-drawing.
-    edge_paths: list[str] = []   # ALL hex outlines — dashed
-    yarm_paths: list[str] = []   # internal Y arms — solid, non-taken only
+    hex_paths: list[str] = []        # solid grid (non-taken tiles)
+    taken_hex_paths: list[str] = []  # dashed grid (taken tiles — under logos)
     dot_marks: list[str] = []
 
     for j in range(-j_max, j_max + 1):
@@ -635,37 +631,45 @@ def build_engines_panel_svg(
                 (cx - R * s3 / 2,  cy + R / 2),
                 (cx - R * s3 / 2,  cy - R / 2),
             ]
+            # 3 internal Y-lines from center to top / BR / BL vertices.
+            y_arms = (
+                f" M {cx:.2f} {cy:.2f} L {verts[0][0]:.2f} {verts[0][1]:.2f}"
+                f" M {cx:.2f} {cy:.2f} L {verts[2][0]:.2f} {verts[2][1]:.2f}"
+                f" M {cx:.2f} {cy:.2f} L {verts[4][0]:.2f} {verts[4][1]:.2f}"
+            )
 
-            # Outline edges: each shared edge is drawn by the tile with the
-            # smaller (i, j); edges whose neighbor falls outside the
-            # rendered grid are always drawn from this side.
-            for e in range(6):
-                n = _hex_edge_neighbor(i, j, e)
-                neighbor_in_grid = (
-                    -i_max <= n[0] <= i_max and -j_max <= n[1] <= j_max
+            if (i, j) in taken:
+                # Engine tile. Draw its 6 outline edges, but if an edge is
+                # shared with ANOTHER engine tile, only the tile with the
+                # smaller (i, j) draws it — otherwise both sides stamp the
+                # same dash pattern and the gaps interlock into a solid line.
+                edge_segs: list[str] = []
+                for e in range(6):
+                    n = _hex_edge_neighbor(i, j, e)
+                    if n in taken and (i, j) > n:
+                        continue
+                    v0 = verts[e]
+                    v1 = verts[(e + 1) % 6]
+                    edge_segs.append(
+                        f"M {v0[0]:.2f} {v0[1]:.2f} L {v1[0]:.2f} {v1[1]:.2f}"
+                    )
+                taken_hex_paths.append(" ".join(edge_segs) + y_arms)
+            else:
+                # Empty tile — full closed outline plus Y arms, drawn solid.
+                outline = (
+                    f"M {verts[0][0]:.2f} {verts[0][1]:.2f} "
+                    + " ".join(f"L {x:.2f} {y:.2f}" for x, y in verts[1:])
+                    + " Z"
                 )
-                if neighbor_in_grid and (i, j) > n:
-                    continue
-                v0 = verts[e]
-                v1 = verts[(e + 1) % 6]
-                edge_paths.append(
-                    f"M {v0[0]:.2f} {v0[1]:.2f} L {v1[0]:.2f} {v1[1]:.2f}"
-                )
-
-            if (i, j) not in taken:
-                # Internal Y arms (the visible cube-corner edges) drawn
-                # solid, only on empty tiles. Engine tiles stay clean under
-                # the logo + label.
-                yarm_paths.append(
-                    f"M {cx:.2f} {cy:.2f} L {verts[0][0]:.2f} {verts[0][1]:.2f} "
-                    f"M {cx:.2f} {cy:.2f} L {verts[2][0]:.2f} {verts[2][1]:.2f} "
-                    f"M {cx:.2f} {cy:.2f} L {verts[4][0]:.2f} {verts[4][1]:.2f}"
-                )
+                hex_paths.append(outline + y_arms)
+                # Dots only on the solid grid; taken tiles stay clean under
+                # their logo + label so the connection points don't clash.
                 for vx, vy in verts + [(cx, cy)]:
                     dot_marks.append(f'<circle cx="{vx:.2f}" cy="{vy:.2f}" r="{dot_radius}"/>')
 
-    combined_borders = " ".join(edge_paths)
-    combined_yarms = " ".join(yarm_paths)
+    # Combined stroke paths (much smaller output than one <path> per hex).
+    combined_path = " ".join(hex_paths)
+    combined_taken_path = " ".join(taken_hex_paths)
 
     # Logo elements
     # IBM Plex Mono advance width is ~0.6 of font-size (600 units in 1000-unit em).
@@ -740,10 +744,18 @@ def build_engines_panel_svg(
         f'width="{fade_h:.2f}" height="{viewbox_h:.2f}" fill="url(#ep-fade-r)"/>'
     )
 
+    # Dashed outlines under the engine tiles are currently hidden; the
+    # `combined_taken_path` is still built so we can re-enable it by simply
+    # uncommenting the <g> below.
+    _hidden_taken_group = (
+        f'<g fill="none" stroke="{color}" stroke-width="{line_width}" '
+        f'stroke-dasharray="{taken_dash}"><path d="{combined_taken_path}"/></g>'
+    )
+    del _hidden_taken_group  # not emitted
+
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
 <defs>{anim_defs}{fade_defs}</defs>
-<g fill="none" stroke="{color}" stroke-width="{line_width}" stroke-dasharray="{border_dash}"><path d="{combined_borders}"/></g>
-<g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_yarms}"/></g>
+<g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
 <g fill="{color}">{"".join(dot_marks)}</g>
 {"".join(logo_html)}
 {anim_body}
