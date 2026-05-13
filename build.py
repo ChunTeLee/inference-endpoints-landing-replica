@@ -182,7 +182,7 @@ def build_orbit_svg() -> str:
         for r, fop, sop in reversed(DECOR_RINGS)
     )
 
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="hub-orbit absolute inset-0 m-auto aspect-square" viewBox="0 0 1192 1293" fill="none" overflow="visible" role="img" aria-label="Inference Endpoints supports popular inference engines" style="max-width:100%;max-height:100%;overflow:visible">
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="hub-orbit absolute inset-0 m-auto aspect-square" viewBox="0 0 1192 1293" fill="none" overflow="visible" role="img" aria-label="Inference Endpoints supports popular inference engines" style="max-width:100%;max-height:100%">
 <style>
   .hub-orbit-inner, .hub-orbit-outer {{ transform-origin: 600.849px 649.706px; animation: hub-orbit-spin 120s linear infinite; }}
   .hub-orbit-outer {{ animation-direction: reverse; }}
@@ -210,7 +210,7 @@ def inject_engine_orbit(html: str) -> str:
         return html
     orbit = build_orbit_svg()
     replacement = (
-        '<div class="relative z-1 grid bg-gray-50 lg:col-span-3">'
+        '<div class="relative z-1 grid bg-gray-50 lg:col-span-3 overflow-hidden">'
         f'{orbit}</div>'
     )
     return html.replace(target, replacement, 1)
