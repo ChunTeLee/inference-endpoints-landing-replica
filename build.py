@@ -216,6 +216,92 @@ def inject_engine_orbit(html: str) -> str:
     return html.replace(target, replacement, 1)
 
 
+# ---------- Cube-pattern style (alternate to the orbit graphic) ----------
+
+CUBE_PATTERN_COLOR = "#EDEFF2"
+
+
+def build_cube_pattern_svg(
+    R: float = 30.0,
+    line_width: float = 1.0,
+    dot_radius: float = 1.8,
+) -> str:
+    """Repeating SVG pattern of isometric 3D cubes — pointy-top hexagonal cells
+    with three internal lines from center to alternating vertices (the visible
+    cube edges) and a dot at every vertex.
+
+    The pattern cell holds 2 hexagons offset so the tiling forms a continuous
+    honeycomb without seams. Pure decoration, aria-hidden."""
+    from math import sqrt
+    s3 = sqrt(3)
+    pw = R * s3           # pattern cell width
+    ph = R * 3            # pattern cell height
+    color = CUBE_PATTERN_COLOR
+
+    # Two hex centers that produce a seamless honeycomb when the cell tiles:
+    # one fully inside the cell, one straddling the left/right edges.
+    centers = [(R * s3 / 2, R), (0.0, 5 * R / 2)]
+
+    def hex_verts(cx: float, cy: float):
+        # Pointy-top hexagon vertices: top, top-right, bottom-right, bottom, bottom-left, top-left.
+        return [
+            (cx,             cy - R),
+            (cx + R * s3 / 2, cy - R / 2),
+            (cx + R * s3 / 2, cy + R / 2),
+            (cx,             cy + R),
+            (cx - R * s3 / 2, cy + R / 2),
+            (cx - R * s3 / 2, cy - R / 2),
+        ]
+
+    path_cmds: list[str] = []
+    dot_circles: list[str] = []
+    for cx, cy in centers:
+        v = hex_verts(cx, cy)
+        # Outer hexagon outline.
+        path_cmds.append(
+            "M {:.3f} {:.3f} L {:.3f} {:.3f} L {:.3f} {:.3f} "
+            "L {:.3f} {:.3f} L {:.3f} {:.3f} L {:.3f} {:.3f} Z".format(*[c for p in v for c in p])
+        )
+        # Three internal lines from center to top / bottom-left / bottom-right
+        # — these are the visible "back edges" of the cube corner.
+        for idx in (0, 2, 4):
+            path_cmds.append(
+                f"M {cx:.3f} {cy:.3f} L {v[idx][0]:.3f} {v[idx][1]:.3f}"
+            )
+        # Dots at every vertex + the center (where three lines meet).
+        for px, py in v + [(cx, cy)]:
+            dot_circles.append(
+                f'<circle cx="{px:.3f}" cy="{py:.3f}" r="{dot_radius}" fill="{color}"/>'
+            )
+
+    path_d = " ".join(path_cmds)
+    dots = "".join(dot_circles)
+
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <defs>
+    <pattern id="cube-grid" patternUnits="userSpaceOnUse" width="{pw:.3f}" height="{ph:.3f}">
+      <path d="{path_d}" stroke="{color}" stroke-width="{line_width}" fill="none"/>
+      {dots}
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#cube-grid)"/>
+</svg>'''
+
+
+def inject_engine_cube_pattern(html: str) -> str:
+    """Fill the engines section's right column with the isometric cube
+    pattern (alternative to the orbit graphic)."""
+    target = '<div class="relative z-1 grid bg-gray-50 lg:col-span-3"></div>'
+    if target not in html:
+        return html
+    pattern_svg = build_cube_pattern_svg()
+    replacement = (
+        '<div class="relative z-1 grid bg-gray-50 lg:col-span-3 overflow-hidden">'
+        f'{pattern_svg}</div>'
+    )
+    return html.replace(target, replacement, 1)
+
+
 def localize_assets(html: str) -> str:
     """Rewrite each mirrored asset URL (LIVE_BASE/path) to a local relative
     path ./assets/path. Anything not in ASSET_PATHS is left alone."""
@@ -237,7 +323,7 @@ def main() -> None:
     html = absolutize_srcset(html)
     html = absolutize_css_urls(html)
     html = localize_assets(html)
-    html = inject_engine_orbit(html)
+    html = inject_engine_cube_pattern(html)
 
     OUT.write_text(html, encoding="utf-8")
     print(f"Wrote {OUT} ({len(html):,} chars)")
