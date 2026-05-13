@@ -744,9 +744,17 @@ def build_engines_panel_svg(
         f'width="{fade_h:.2f}" height="{viewbox_h:.2f}" fill="url(#ep-fade-r)"/>'
     )
 
+    # Dashed outlines under the engine tiles are currently hidden; the
+    # `combined_taken_path` is still built so we can re-enable it by simply
+    # uncommenting the <g> below.
+    _hidden_taken_group = (
+        f'<g fill="none" stroke="{color}" stroke-width="{line_width}" '
+        f'stroke-dasharray="{taken_dash}"><path d="{combined_taken_path}"/></g>'
+    )
+    del _hidden_taken_group  # not emitted
+
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
 <defs>{anim_defs}{fade_defs}</defs>
-<g fill="none" stroke="{color}" stroke-width="{line_width}" stroke-dasharray="{taken_dash}"><path d="{combined_taken_path}"/></g>
 <g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
 <g fill="{color}">{"".join(dot_marks)}</g>
 {"".join(logo_html)}
