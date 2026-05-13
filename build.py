@@ -226,17 +226,19 @@ LOGO_TILE_R = 54.0            # hex radius used for the engines panel
 VIEWBOX_W = 800.0
 VIEWBOX_H = 440.0
 
-# Each entry: (label, icon_filename, label_text_or_None, tile_coords).
+# Each entry: (label, icon_filename, label_text_or_None, tile_coords, icon_size).
 # Tile coords are (i, j): user_x = i * R*sqrt(3), user_y = j * 1.5 * R for
 # even j (odd j adds half a column offset, but our layout uses even j only).
 # tile_coords[0] is the icon's tile; remaining entries are text-area tiles.
+# icon_size is in user units; the engines panel hex inscribed-circle diameter
+# is R*sqrt(3) ≈ 93.5 for R=54, so the IE logo at 70 takes ~75% with padding.
 LOGO_GROUPS = [
-    ("IE",           "inference-endpoints.svg", None,           [(0, 0)]),
-    ("SGLang",       "engine-3.svg",            "SGL",          [(-2, -2), (-1, -2)]),
-    ("vLLM",         "engine-2.svg",            "vLLM",         [(1, -2),  (2, -2)]),
-    ("LlamaCpp",     "engine-4.svg",            "LLaMA",        [(-3, 0),  (-2, 0)]),
-    ("TGI",          "engine-5.svg",            "TGI",          [(2, 0),   (3, 0)]),
-    ("Transformers", "engine-1.svg",            "Transformers", [(-1, 2),  (0, 2), (1, 2)]),
+    ("IE",           "inference-endpoints.svg", None,           [(0, 0)],                   70.0),
+    ("SGLang",       "engine-3.svg",            "SGL",          [(-2, -2), (-1, -2)],       30.0),
+    ("vLLM",         "engine-2.svg",            "vLLM",         [(1, -2),  (2, -2)],        30.0),
+    ("LlamaCpp",     "engine-4.svg",            "LLaMA",        [(-3, 0),  (-2, 0)],        30.0),
+    ("TGI",          "engine-5.svg",            "TGI",          [(2, 0),   (3, 0)],         30.0),
+    ("Transformers", "engine-1.svg",            "Transformers", [(-1, 2),  (0, 2), (1, 2)], 30.0),
 ]
 
 
@@ -344,12 +346,12 @@ def build_engines_panel_svg(
     viewbox_h: float = VIEWBOX_H,
     line_width: float = 1.0,
     dot_radius: float = 2.0,
-    icon_size: float = 30.0,
     font_size: float = 24.0,
     text_gap: float = 6.0,
     icon_y_adjust: float = -2.0,    # nudge icons up a few units so they
                                     # visually align with the monospace
                                     # cap-text mid-line, not its em-box mid.
+                                    # Applied to logos with text only.
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
@@ -364,8 +366,8 @@ def build_engines_panel_svg(
 
     # Tiles occupied by logo content — pattern is suppressed on these.
     taken: set[tuple[int, int]] = set()
-    for _, _, _, tiles in LOGO_GROUPS:
-        for t in tiles:
+    for entry in LOGO_GROUPS:
+        for t in entry[3]:
             taken.add(t)
 
     # Visible (i, j) bounds (with a margin so partially-clipped hexes still
@@ -414,19 +416,21 @@ def build_engines_panel_svg(
 
     # Logo elements
     logo_html: list[str] = []
-    for name, icon_file, text, tiles in LOGO_GROUPS:
+    for name, icon_file, text, tiles, this_icon_size in LOGO_GROUPS:
         icon_cx, icon_cy = _tile_center(*tiles[0], R)
-        # Icon centered in the icon tile, nudged up to match text optical center.
-        ix = icon_cx - icon_size / 2
-        iy = icon_cy - icon_size / 2 + icon_y_adjust
+        # The text-alignment nudge only applies when there's text — the IE
+        # logo at the center stands alone in its tile, no need to shift up.
+        nudge = icon_y_adjust if text else 0.0
+        ix = icon_cx - this_icon_size / 2
+        iy = icon_cy - this_icon_size / 2 + nudge
         logo_html.append(
             f'<image href="assets/logos/{icon_file}" x="{ix:.2f}" y="{iy:.2f}" '
-            f'width="{icon_size}" height="{icon_size}" preserveAspectRatio="xMidYMid meet"/>'
+            f'width="{this_icon_size}" height="{this_icon_size}" preserveAspectRatio="xMidYMid meet"/>'
         )
         if text:
             # Text starts just right of the icon, vertically centered to
             # the icon row.
-            text_x = icon_cx + icon_size / 2 + text_gap
+            text_x = icon_cx + this_icon_size / 2 + text_gap
             text_y = icon_cy
             logo_html.append(
                 f'<text x="{text_x:.2f}" y="{text_y:.2f}" '
