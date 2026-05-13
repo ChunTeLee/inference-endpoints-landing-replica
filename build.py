@@ -347,6 +347,9 @@ def build_engines_panel_svg(
     icon_size: float = 30.0,
     font_size: float = 24.0,
     text_gap: float = 6.0,
+    icon_y_adjust: float = -2.0,    # nudge icons up a few units so they
+                                    # visually align with the monospace
+                                    # cap-text mid-line, not its em-box mid.
 ) -> str:
     """Cube-pattern panel with engine logos + IBM Plex Mono labels.
 
@@ -413,9 +416,9 @@ def build_engines_panel_svg(
     logo_html: list[str] = []
     for name, icon_file, text, tiles in LOGO_GROUPS:
         icon_cx, icon_cy = _tile_center(*tiles[0], R)
-        # Icon centered in the icon tile
+        # Icon centered in the icon tile, nudged up to match text optical center.
         ix = icon_cx - icon_size / 2
-        iy = icon_cy - icon_size / 2
+        iy = icon_cy - icon_size / 2 + icon_y_adjust
         logo_html.append(
             f'<image href="assets/logos/{icon_file}" x="{ix:.2f}" y="{iy:.2f}" '
             f'width="{icon_size}" height="{icon_size}" preserveAspectRatio="xMidYMid meet"/>'
