@@ -708,13 +708,48 @@ def build_engines_panel_svg(
     vb_x = -viewbox_w / 2
     vb_y = -viewbox_h / 2
 
+    # Edge fade — four gradient overlays at the panel borders so the cube
+    # pattern, dashed engine outlines, and traveling lines all bleed into
+    # the white page background instead of stopping at a hard edge.
+    fade_v = 50.0   # vertical fade extent (top + bottom strips)
+    fade_h = 100.0  # horizontal fade extent (left + right strips)
+    fade_defs = (
+        '<linearGradient id="ep-fade-t" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="white" stop-opacity="1"/>'
+        '<stop offset="1" stop-color="white" stop-opacity="0"/>'
+        '</linearGradient>'
+        '<linearGradient id="ep-fade-b" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="white" stop-opacity="0"/>'
+        '<stop offset="1" stop-color="white" stop-opacity="1"/>'
+        '</linearGradient>'
+        '<linearGradient id="ep-fade-l" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0" stop-color="white" stop-opacity="1"/>'
+        '<stop offset="1" stop-color="white" stop-opacity="0"/>'
+        '</linearGradient>'
+        '<linearGradient id="ep-fade-r" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0" stop-color="white" stop-opacity="0"/>'
+        '<stop offset="1" stop-color="white" stop-opacity="1"/>'
+        '</linearGradient>'
+    )
+    fade_rects = (
+        f'<rect x="{vb_x:.2f}" y="{vb_y:.2f}" '
+        f'width="{viewbox_w:.2f}" height="{fade_v:.2f}" fill="url(#ep-fade-t)"/>'
+        f'<rect x="{vb_x:.2f}" y="{vb_y + viewbox_h - fade_v:.2f}" '
+        f'width="{viewbox_w:.2f}" height="{fade_v:.2f}" fill="url(#ep-fade-b)"/>'
+        f'<rect x="{vb_x:.2f}" y="{vb_y:.2f}" '
+        f'width="{fade_h:.2f}" height="{viewbox_h:.2f}" fill="url(#ep-fade-l)"/>'
+        f'<rect x="{vb_x + viewbox_w - fade_h:.2f}" y="{vb_y:.2f}" '
+        f'width="{fade_h:.2f}" height="{viewbox_h:.2f}" fill="url(#ep-fade-r)"/>'
+    )
+
     return f'''<svg xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full" viewBox="{vb_x:.2f} {vb_y:.2f} {viewbox_w:.2f} {viewbox_h:.2f}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-<defs>{anim_defs}</defs>
+<defs>{anim_defs}{fade_defs}</defs>
 <g fill="none" stroke="{color}" stroke-width="{line_width}" stroke-dasharray="{taken_dash}"><path d="{combined_taken_path}"/></g>
 <g fill="none" stroke="{color}" stroke-width="{line_width}"><path d="{combined_path}"/></g>
 <g fill="{color}">{"".join(dot_marks)}</g>
 {"".join(logo_html)}
 {anim_body}
+{fade_rects}
 </svg>'''
 
 
