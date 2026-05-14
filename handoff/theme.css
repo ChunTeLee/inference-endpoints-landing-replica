@@ -1,0 +1,32 @@
+/* Merge these tokens into your existing app.css (Tailwind v4 @theme block) */
+
+@theme {
+  --font-sans: 'Source Sans Pro', sans-serif;
+  --font-mono: 'IBM Plex Mono', mono;
+
+  /* Used by feature-card badge text and the small "Engines / Pricing" pills */
+  --text-smd: 0.9375rem;
+  --text-smd--line-height: 1.5;
+}
+
+/* Page defaults expected by the layout */
+html,
+body {
+  font-family: var(--font-sans);
+  color: #111827;
+  background: #ffffff;
+}
+
+/* IBM Plex Mono labels in EnginesPanel.svelte need weight 400, and several
+   other parts of the page (if you keep them) use 300 too. Load via Google
+   Fonts in your <head>:
+
+     <link
+       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600;700&display=swap"
+       rel="stylesheet"
+     />
+     <link
+       href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&display=swap"
+       rel="stylesheet"
+     />
+*/
