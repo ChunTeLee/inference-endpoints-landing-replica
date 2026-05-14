@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Source Sans Pro', sans-serif;
+  --font-mono: 'IBM Plex Mono', mono;
+  --text-smd: 0.9375rem;
+  --text-smd--line-height: 1.5;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  color: #111827;
+  background: #ffffff;
+}
